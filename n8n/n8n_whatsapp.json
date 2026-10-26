@@ -1,0 +1,152 @@
+{
+  "name": "Grafana -> WhatsApp (CallMeBot)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "grafana-alert",
+        "responseMode": "onReceived",
+        "responseCode": 200,
+        "options": {}
+      },
+      "id": "webhook-node",
+      "name": "Webhook Grafana",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "grafana-alert"
+    },
+    {
+      "parameters": {
+        "jsExpression": "={{ $json.body.alerts }}",
+        "options": {}
+      },
+      "id": "split-node",
+      "name": "Separar alertas",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [460, 300],
+      "notes": "Divide el array 'alerts' en items individuales, por si Grafana agrupa varias alertas en un mismo POST"
+    },
+    {
+      "parameters": {
+        "jsCode": "const alert = $json;\nconst status = $('Webhook Grafana').first().json.body.status;\n\nconst emoji = status === 'firing' ? '\\u{1F534}' : '\\u2705';\nconst estado = status === 'firing' ? 'DISPARADA' : 'RESUELTA';\n\nconst nombre = alert.labels?.alertname || 'Sin nombre';\nconst severidad = alert.labels?.severity || 'sin severidad';\nconst resumen = alert.annotations?.summary || alert.annotations?.description || 'Sin detalle';\n\nconst texto = `${emoji} *${estado}*: ${nombre}\\nSeveridad: ${severidad}\\n${resumen}`;\n\nreturn {\n  json: {\n    texto,\n    severidad,\n    status\n  }\n};"
+      },
+      "id": "code-node",
+      "name": "Formatear mensaje",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.severidad }}",
+              "rightValue": "critical",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-node",
+      "name": "Solo criticas",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300],
+      "notes": "Opcional: filtra para que solo severity=critical mande WhatsApp. Borra este nodo y conecta directo si querés todas las alertas."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.callmebot.com/whatsapp.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "TU_NUMERO_CON_CODIGO_PAIS"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.texto }}"
+            },
+            {
+              "name": "apikey",
+              "value": "TU_APIKEY_CALLMEBOT"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-node",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 220]
+    }
+  ],
+  "connections": {
+    "Webhook Grafana": {
+      "main": [
+        [
+          {
+            "node": "Separar alertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Separar alertas": {
+      "main": [
+        [
+          {
+            "node": "Formatear mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear mensaje": {
+      "main": [
+        [
+          {
+            "node": "Solo criticas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Solo criticas": {
+      "main": [
+        [
+          {
+            "node": "Enviar WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
